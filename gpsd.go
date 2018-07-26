@@ -7,6 +7,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"github.com/ghetzel/go-stockutil/log"
 )
 
 // DefaultAddress of gpsd (localhost:2947)
@@ -204,6 +206,10 @@ func dialCommon(c net.Conn, err error) (session *Session, e error) {
 	return
 }
 
+func (s *Session) Close() error {
+	return s.socket.Close()
+}
+
 // Watch starts watching GPSD reports in a new goroutine.
 //
 // Example
@@ -235,6 +241,7 @@ func (s *Session) SendCommand(command string) {
 //    })
 //    done := gps.Watch()
 //    <- done
+
 func (s *Session) AddFilter(class string, f Filter) {
 	s.filters[class] = append(s.filters[class], f)
 }
@@ -260,18 +267,20 @@ func watch(done chan bool, s *Session) {
 				if report, err2 := unmarshalReport(reportPeek.Class, lineBytes); err2 == nil {
 					s.deliverReport(reportPeek.Class, report)
 				} else {
-					fmt.Println("JSON parsing error 2:", err)
+					log.Errorf("[gpsd] JSON parsing error 2: %v", err)
 				}
 			} else {
-				fmt.Println("JSON parsing error:", err)
+				log.Errorf("[gpsd] JSON parsing error: %v", err)
 			}
+		} else if err == io.EOF {
+			log.Debugf("[gpsd] Stream closed")
+			break
 		} else {
-			fmt.Println("Stream reader error (is gpsd running?):", err)
-			if err == io.EOF {
-				break
-			}
+			log.Errorf("[gpsd] Stream reader error: %v", err)
+			break
 		}
 	}
+
 	done <- true
 }
 
